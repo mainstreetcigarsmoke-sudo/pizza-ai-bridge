@@ -26,11 +26,16 @@ async function getToastToken() {
 
 app.post('/create-order', async (req, res) => {
   try {
-    const { customerName, phone, items, orderType } = req.body;
+    const { name, time, items, notes, phoneNumber } = req.body.message.toolCalls[0].function.arguments;
     const token = await getToastToken();
-    res.json({ success: true, message: `Order received for ${customerName}`, items, orderType });
+    res.json({
+      results: [{
+        toolCallId: req.body.message.toolCalls[0].id,
+        result: `Order confirmed! ${name}, your order of ${JSON.stringify(items)} is placed for ${time}. See you soon! 🍕`
+      }]
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
