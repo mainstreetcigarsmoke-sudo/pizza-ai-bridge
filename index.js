@@ -3,38 +3,48 @@ const app = express();
 app.use(express.json());
 
 const {
-  TOAST_CLIENT_ID,
-  TOAST_CLIENT_SECRET,
-  TOAST_API_HOSTNAME,
-  TOAST_USER_ACCESS_TYPE,
+  RESEND_API_KEY,
   PORT = 3000
 } = process.env;
-
-async function getToastToken() {
-  const res = await fetch(`${TOAST_API_HOSTNAME}/authentication/v1/authentication/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      clientId: TOAST_CLIENT_ID,
-      clientSecret: TOAST_CLIENT_SECRET,
-      userAccessType: TOAST_USER_ACCESS_TYPE
-    })
-  });
-  const data = await res.json();
-  return data.token.accessToken;
-}
 
 app.post('/create-order', async (req, res) => {
   try {
     const { name, time, items, notes, phoneNumber } = req.body.message.toolCalls[0].function.arguments;
-    const token = await getToastToken();
+    const toolCallId = req.body.message.toolCalls[0].id;
+
+    const itemsList = Array.isArray(items) 
+      ? items.map(i => typeof i === 'object' ? i.itemName || JSON.stringify(i) : i).join(', ')
+      : items;
+
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'orders@resend.dev',
+        to: 'mainstreetcigarsmoke@gmail.com',
+        subject: `🍕 New Pizza Order from ${name}!`,
+        html: `
+          <h2>New Order Received!</h2>
+          <p><strong>Customer:</strong> ${name}</p>
+          <p><strong>Phone:</strong> ${phoneNumber}</p>
+          <p><strong>Items:</strong> ${itemsList}</p>
+          <p><strong>Pickup Time:</strong> ${time}</p>
+          <p><strong>Notes:</strong> ${notes || 'None'}</p>
+        `
+      })
+    });
+
     res.json({
       results: [{
-        toolCallId: req.body.message.toolCalls[0].id,
-        result: `Order confirmed! ${name}, your order of ${JSON.stringify(items)} is placed for ${time}. See you soon! 🍕`
+        toolCallId,
+        result: `Order confirmed! ${name}, your order of ${itemsList} is placed for ${time}. See you soon! 🍕`
       }]
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
