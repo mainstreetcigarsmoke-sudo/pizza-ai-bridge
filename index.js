@@ -1,8 +1,16 @@
 const express = require('express');
+const PDFDocument = require('pdfkit');
 const app = express();
 app.use(express.json());
 
-const { RESEND_API_KEY, SUPABASE_URL, SUPABASE_SECRET_KEY, PORT = 3000 } = process.env;
+const {
+  RESEND_API_KEY,
+  SUPABASE_URL,
+  SUPABASE_SECRET_KEY,
+  PRINTNODE_API_KEY,
+  PRINTNODE_PRINTER_ID,
+  PORT = 3000
+} = process.env;
 
 const supabaseHeaders = {
   'apikey': SUPABASE_SECRET_KEY,
@@ -64,6 +72,71 @@ async function saveCustomer(phone, name, items, time) {
   }
 }
 
+// Builds a simple one-page kitchen ticket as a PDF buffer
+function buildTicketPDF({ name, phoneNumber, itemsList, time, notes }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: [288, 500], margin: 10 }); // ~4 inch wide ticket
+      const chunks = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      doc.fontSize(16).text("SAL'S PIZZA - NEW ORDER", { align: 'center' });
+      doc.moveDown();
+      doc.fontSize(12).text(`Name: ${name}`);
+      doc.text(`Phone: ${phoneNumber}`);
+      doc.text(`Pickup Time: ${time}`);
+      doc.moveDown();
+      doc.fontSize(12).text('Items:', { underline: true });
+      doc.fontSize(12).text(itemsList);
+      doc.moveDown();
+      doc.text(`Notes: ${notes || 'None'}`);
+      doc.moveDown();
+      doc.fontSize(10).text(new Date().toLocaleString(), { align: 'center' });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Sends a ticket to the kitchen printer via PrintNode
+async function printOrderTicket(order) {
+  try {
+    if (!PRINTNODE_API_KEY || !PRINTNODE_PRINTER_ID) {
+      console.log('PrintNode not configured yet, skipping print.');
+      return;
+    }
+
+    const pdfBuffer = await buildTicketPDF(order);
+    const base64PDF = pdfBuffer.toString('base64');
+
+    const authHeader = 'Basic ' + Buffer.from(`${PRINTNODE_API_KEY}:`).toString('base64');
+
+    const res = await fetch('https://api.printnode.com/printjobs', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        printerId: Number(PRINTNODE_PRINTER_ID),
+        title: `Order - ${order.name}`,
+        contentType: 'pdf_base64',
+        content: base64PDF,
+        source: 'Pizza AI Bridge'
+      })
+    });
+
+    const result = await res.text();
+    console.log('PrintNode response:', res.status, result);
+  } catch (err) {
+    console.error('printOrderTicket error:', err);
+  }
+}
+
 app.post('/create-order', async (req, res) => {
   try {
     const args = req.body.message.toolCalls[0].function.arguments;
@@ -97,6 +170,9 @@ app.post('/create-order', async (req, res) => {
         `
       })
     });
+
+    // Print kitchen ticket (won't break the order if printing fails)
+    await printOrderTicket({ name, phoneNumber, itemsList, time, notes });
 
     res.json({
       results: [{
