@@ -12,6 +12,16 @@ const {
   PORT = 3000
 } = process.env;
 
+// Store hours: 9:00 AM - 9:00 PM Eastern Time
+const STORE_OPEN_HOUR = 9;   // 9 AM
+const STORE_CLOSE_HOUR = 21; // 9 PM (24hr format)
+
+function isStoreOpenNow() {
+  const nowEastern = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+  const hour = new Date(nowEastern).getHours();
+  return hour >= STORE_OPEN_HOUR && hour < STORE_CLOSE_HOUR;
+}
+
 const supabaseHeaders = {
   'apikey': SUPABASE_SECRET_KEY,
   'Authorization': `Bearer ${SUPABASE_SECRET_KEY}`,
@@ -72,11 +82,10 @@ async function saveCustomer(phone, name, items, time) {
   }
 }
 
-// Builds a simple one-page kitchen ticket as a PDF buffer
 function buildTicketPDF({ name, phoneNumber, itemsList, time, notes }) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: [288, 500], margin: 10 }); // ~4 inch wide ticket
+      const doc = new PDFDocument({ size: [288, 500], margin: 10 });
       const chunks = [];
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -102,7 +111,6 @@ function buildTicketPDF({ name, phoneNumber, itemsList, time, notes }) {
   });
 }
 
-// Sends a ticket to the kitchen printer via PrintNode
 async function printOrderTicket(order) {
   try {
     if (!PRINTNODE_API_KEY || !PRINTNODE_PRINTER_ID) {
@@ -144,6 +152,15 @@ app.post('/create-order', async (req, res) => {
     const { name, time, items, notes, phoneNumber } = args;
     const toolCallId = req.body.message.toolCalls[0].id;
 
+    if (!isStoreOpenNow()) {
+      return res.json({
+        results: [{
+          toolCallId,
+          result: `Sorry, Sal's Pizza is currently closed. We're open daily from 9 AM to 9 PM Eastern. Please call back during business hours!`
+        }]
+      });
+    }
+
     const itemsList = Array.isArray(items)
       ? items.map(i => typeof i === 'object' ? i.itemName || JSON.stringify(i) : i).join(', ')
       : items;
@@ -171,7 +188,6 @@ app.post('/create-order', async (req, res) => {
       })
     });
 
-    // Print kitchen ticket (won't break the order if printing fails)
     await printOrderTicket({ name, phoneNumber, itemsList, time, notes });
 
     res.json({
