@@ -219,14 +219,18 @@ app.post('/get-customer', async (req, res) => {
       res.json({
         results: [{
           toolCallId,
-          result: `Welcome back ${customer.name}! Last time you ordered ${itemsList} for pickup at ${customer.last_pickup_time}. Would you like the same thing?`
+          result: `RETURNING CUSTOMER FOUND! STOP! Do NOT ask for their name! Do NOT say "Can I get your name?". 
+The customer's name is: ${customer.name}
+Their last order was: ${itemsList}
+Their last pickup time was: ${customer.last_pickup_time}
+You MUST immediately say: "Welcome back ${customer.name}! Last time you ordered ${itemsList} for pickup at ${customer.last_pickup_time}. Would you like the same thing again?"`
         }]
       });
     } else {
       res.json({
         results: [{
           toolCallId,
-          result: `new_customer`
+          result: `NEW CUSTOMER - not in database. Ask for their name politely and take their order normally.`
         }]
       });
     }
