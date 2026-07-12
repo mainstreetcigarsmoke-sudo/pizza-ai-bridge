@@ -12,9 +12,8 @@ const {
   PORT = 3000
 } = process.env;
 
-// Store hours: 9:00 AM - 9:00 PM Eastern Time
-const STORE_OPEN_HOUR = 9;   // 9 AM
-const STORE_CLOSE_HOUR = 21; // 9 PM (24hr format)
+const STORE_OPEN_HOUR = 9;
+const STORE_CLOSE_HOUR = 21;
 
 function isStoreOpenNow() {
   const nowEastern = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
@@ -36,7 +35,6 @@ async function getCustomer(phone) {
       headers: supabaseHeaders
     });
     const data = await res.json();
-    console.log('getCustomer result:', JSON.stringify(data));
     return data[0] || null;
   } catch (err) {
     console.error('getCustomer error:', err);
@@ -49,7 +47,7 @@ async function saveCustomer(phone, name, items, time) {
     const clean = phone.replace(/\D/g, '');
     const existing = await getCustomer(clean);
     if (existing) {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/customers?phone_number=eq.${clean}`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/customers?phone_number=eq.${clean}`, {
         method: 'PATCH',
         headers: supabaseHeaders,
         body: JSON.stringify({
@@ -60,9 +58,8 @@ async function saveCustomer(phone, name, items, time) {
           updated_at: new Date().toISOString()
         })
       });
-      console.log('updateCustomer status:', res.status);
     } else {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/customers`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/customers`, {
         method: 'POST',
         headers: supabaseHeaders,
         body: JSON.stringify({
@@ -73,37 +70,93 @@ async function saveCustomer(phone, name, items, time) {
           order_count: 1
         })
       });
-      console.log('saveCustomer status:', res.status);
-      const data = await res.json();
-      console.log('saveCustomer response:', JSON.stringify(data));
     }
   } catch (err) {
     console.error('saveCustomer error:', err);
   }
 }
 
-function buildTicketPDF({ name, phoneNumber, itemsList, time, notes }) {
+function formatItems(items) {
+  if (!Array.isArray(items)) return items;
+  const pizzaKeywords = ['pizza', 'calzone', 'medium', 'large', 'xl', 'thin crust', 'gluten free', 'slice'];
+  const toppingKeywords = ['topping', 'extra', 'add'];
+  const grouped = [];
+  let currentPizza = null;
+  items.forEach(item => {
+    const raw = typeof item === 'object' ? (item.itemName || JSON.stringify(item)) : item;
+    const lower = raw.toLowerCase();
+    const isPizza = pizzaKeywords.some(s => lower.includes(s));
+    const isTopping = toppingKeywords.some(t => lower.includes(t));
+    if (isPizza) {
+      currentPizza = { name: raw, toppings: [] };
+      grouped.push(currentPizza);
+    } else if (isTopping && currentPizza) {
+      const cleanTopping = raw.replace(/\(.*?\)/g, '').trim();
+      currentPizza.toppings.push(cleanTopping);
+    } else {
+      grouped.push({ name: raw, toppings: [] });
+      currentPizza = null;
+    }
+  });
+  return grouped;
+}
+
+function formatItemsHTML(items) {
+  const grouped = formatItems(items);
+  if (typeof grouped === 'string') return `<li>${grouped}</li>`;
+  return grouped.map(item => {
+    let html = `<li style="margin-bottom:6px"><strong>${item.name}</strong>`;
+    if (item.toppings.length > 0) {
+      html += '<ul style="margin:4px 0 0 16px;padding:0;list-style:none">';
+      html += item.toppings.map(t => `<li style="color:#555;font-size:13px">+ ${t}</li>`).join('');
+      html += '</ul>';
+    }
+    html += '</li>';
+    return html;
+  }).join('');
+}
+
+function formatItemsFlat(items) {
+  const grouped = formatItems(items);
+  if (typeof grouped === 'string') return grouped;
+  return grouped.map(item => {
+    let parts = [item.name];
+    if (item.toppings.length > 0) parts.push(item.toppings.join(', '));
+    return parts.join(' + ');
+  }).join(' | ');
+}
+
+function buildTicketPDF({ name, phoneNumber, items, time, notes }) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: [288, 500], margin: 10 });
+      const doc = new PDFDocument({ size: [288, 600], margin: 10 });
       const chunks = [];
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-
       doc.fontSize(16).text("SAL'S PIZZA - NEW ORDER", { align: 'center' });
-      doc.moveDown();
-      doc.fontSize(12).text(`Name: ${name}`);
+      doc.moveDown(0.5);
+      doc.fontSize(11).text(`Customer: ${name}`);
       doc.text(`Phone: ${phoneNumber}`);
-      doc.text(`Pickup Time: ${time}`);
-      doc.moveDown();
-      doc.fontSize(12).text('Items:', { underline: true });
-      doc.fontSize(12).text(itemsList);
-      doc.moveDown();
-      doc.text(`Notes: ${notes || 'None'}`);
-      doc.moveDown();
-      doc.fontSize(10).text(new Date().toLocaleString(), { align: 'center' });
-
+      doc.text(`Pickup: ${time}`);
+      doc.moveDown(0.5);
+      doc.fontSize(12).text('ORDER ITEMS:', { underline: true });
+      doc.moveDown(0.3);
+      const grouped = formatItems(items);
+      if (typeof grouped === 'string') {
+        doc.fontSize(11).text(grouped);
+      } else {
+        grouped.forEach(item => {
+          doc.fontSize(11).text(`• ${item.name}`);
+          item.toppings.forEach(t => {
+            doc.fontSize(10).text(`    + ${t}`);
+          });
+        });
+      }
+      doc.moveDown(0.5);
+      if (notes) doc.fontSize(10).text(`Notes: ${notes}`);
+      doc.moveDown(0.5);
+      doc.fontSize(9).text(new Date().toLocaleString(), { align: 'center' });
       doc.end();
     } catch (err) {
       reject(err);
@@ -114,21 +167,15 @@ function buildTicketPDF({ name, phoneNumber, itemsList, time, notes }) {
 async function printOrderTicket(order) {
   try {
     if (!PRINTNODE_API_KEY || !PRINTNODE_PRINTER_ID) {
-      console.log('PrintNode not configured yet, skipping print.');
+      console.log('PrintNode not configured, skipping print.');
       return;
     }
-
     const pdfBuffer = await buildTicketPDF(order);
     const base64PDF = pdfBuffer.toString('base64');
-
     const authHeader = 'Basic ' + Buffer.from(`${PRINTNODE_API_KEY}:`).toString('base64');
-
     const res = await fetch('https://api.printnode.com/printjobs', {
       method: 'POST',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         printerId: Number(PRINTNODE_PRINTER_ID),
         title: `Order - ${order.name}`,
@@ -137,7 +184,6 @@ async function printOrderTicket(order) {
         source: 'Pizza AI Bridge'
       })
     });
-
     const result = await res.text();
     console.log('PrintNode response:', res.status, result);
   } catch (err) {
@@ -148,53 +194,57 @@ async function printOrderTicket(order) {
 app.post('/create-order', async (req, res) => {
   try {
     const args = req.body.message.toolCalls[0].function.arguments;
-    console.log('create-order args:', JSON.stringify(args));
     const { name, time, items, notes, phoneNumber } = args;
     const toolCallId = req.body.message.toolCalls[0].id;
 
     if (!isStoreOpenNow()) {
       return res.json({
-        results: [{
-          toolCallId,
-          result: `Sorry, Sal's Pizza is currently closed. We're open daily from 9 AM to 9 PM Eastern. Please call back during business hours!`
-        }]
+        results: [{ toolCallId, result: `Sorry, Sal's Pizza is currently closed. We're open daily from 9 AM to 9 PM Eastern. Please call back during business hours!` }]
       });
     }
 
-    const itemsList = Array.isArray(items)
-      ? items.map(i => typeof i === 'object' ? i.itemName || JSON.stringify(i) : i).join(', ')
-      : items;
+    const itemsHTML = formatItemsHTML(items);
+    const itemsFlat = formatItemsFlat(items);
 
     await saveCustomer(phoneNumber, name, items, time);
 
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RESEND_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: 'orders@resend.dev',
         to: 'mainstreetcigarsmoke@gmail.com',
-        subject: `🍕 New Pizza Order from ${name}!`,
+        subject: `🍕 New Order from ${name} — Pickup ${time}`,
         html: `
-          <h2>New Order Received!</h2>
-          <p><strong>Customer:</strong> ${name}</p>
-          <p><strong>Phone:</strong> ${phoneNumber}</p>
-          <p><strong>Items:</strong> ${itemsList}</p>
-          <p><strong>Pickup Time:</strong> ${time}</p>
-          <p><strong>Notes:</strong> ${notes || 'None'}</p>
+          <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #ddd;border-radius:8px;overflow:hidden">
+            <div style="background:#E84C2B;padding:16px;text-align:center">
+              <h2 style="color:white;margin:0;font-size:18px">🍕 NEW ORDER — SAL'S PIZZA</h2>
+            </div>
+            <div style="padding:16px;background:#fff">
+              <table style="width:100%;font-size:14px;border-collapse:collapse">
+                <tr><td style="padding:6px 0;color:#888;width:100px">Customer</td><td style="padding:6px 0;font-weight:bold">${name}</td></tr>
+                <tr><td style="padding:6px 0;color:#888">Phone</td><td style="padding:6px 0">${phoneNumber}</td></tr>
+                <tr><td style="padding:6px 0;color:#888">Pickup</td><td style="padding:6px 0;font-weight:bold;color:#E84C2B">${time}</td></tr>
+              </table>
+              <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
+              <p style="font-size:13px;font-weight:bold;color:#333;margin:0 0 8px">ORDER ITEMS</p>
+              <ul style="margin:0;padding-left:16px;font-size:14px;line-height:1.8">
+                ${itemsHTML}
+              </ul>
+              ${notes ? `<hr style="border:none;border-top:1px solid #eee;margin:12px 0"><p style="font-size:13px;color:#888;margin:0">Notes: <span style="color:#333">${notes}</span></p>` : ''}
+            </div>
+            <div style="background:#f9f9f9;padding:10px;text-align:center;font-size:12px;color:#aaa">
+              Order received at ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })}
+            </div>
+          </div>
         `
       })
     });
 
-    await printOrderTicket({ name, phoneNumber, itemsList, time, notes });
+    await printOrderTicket({ name, phoneNumber, items, time, notes });
 
     res.json({
-      results: [{
-        toolCallId,
-        result: `Order confirmed! ${name}, your order of ${itemsList} is placed for ${time}. See you soon! 🍕`
-      }]
+      results: [{ toolCallId, result: `Order confirmed! ${name}, your order is placed for pickup at ${time}. See you soon! 🍕` }]
     });
   } catch (err) {
     console.error('create-order error:', err);
@@ -205,30 +255,15 @@ app.post('/create-order', async (req, res) => {
 app.post('/get-customer', async (req, res) => {
   try {
     const args = req.body.message.toolCalls[0].function.arguments;
-    console.log('get-customer args:', JSON.stringify(args));
     const { phoneNumber } = args;
     const toolCallId = req.body.message.toolCalls[0].id;
     const customer = await getCustomer(phoneNumber);
-    console.log('customer found:', JSON.stringify(customer));
-
     if (customer) {
       const items = JSON.parse(customer.last_order || '[]');
-      const itemsList = Array.isArray(items)
-        ? items.map(i => typeof i === 'object' ? i.itemName || JSON.stringify(i) : i).join(', ')
-        : items;
-      res.json({
-        results: [{
-          toolCallId,
-          result: `Welcome back ${customer.name}! Last time you ordered ${itemsList} for pickup at ${customer.last_pickup_time}. Would you like the same thing?`
-        }]
-      });
+      const itemsFlat = formatItemsFlat(items);
+      res.json({ results: [{ toolCallId, result: `Welcome back ${customer.name}! Last time you ordered ${itemsFlat} for pickup at ${customer.last_pickup_time}. Would you like the same thing?` }] });
     } else {
-      res.json({
-        results: [{
-          toolCallId,
-          result: `new_customer`
-        }]
-      });
+      res.json({ results: [{ toolCallId, result: `new_customer` }] });
     }
   } catch (err) {
     console.error('get-customer error:', err);
