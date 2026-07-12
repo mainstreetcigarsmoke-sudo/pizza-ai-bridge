@@ -177,56 +177,13 @@ app.post('/create-order', async (req, res) => {
         from: 'orders@resend.dev',
         to: 'mainstreetcigarsmoke@gmail.com',
         subject: `🍕 New Pizza Order from ${name}!`,
-       html: `
-  <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto">
-    <div style="background:#D32F2F;padding:15px;text-align:center">
-      <h2 style="color:white;margin:0">🍕 NEW ORDER — SAL'S PIZZA</h2>
-    </div>
-    <div style="padding:20px;background:#f9f9f9">
-      
-      <table style="width:100%;border-collapse:collapse;margin-bottom:15px">
-        <tr style="background:#333;color:white">
-          <td style="padding:8px"><b>👤 Customer</b></td>
-          <td style="padding:8px">${name}</td>
-        </tr>
-        <tr style="background:#fff">
-          <td style="padding:8px"><b>📞 Phone</b></td>
-          <td style="padding:8px">${phoneNumber}</td>
-        </tr>
-        <tr style="background:#f5f5f5">
-          <td style="padding:8px"><b>⏰ Pickup Time</b></td>
-          <td style="padding:8px">${time}</td>
-        </tr>
-      </table>
-
-      <div style="background:white;border:2px solid #D32F2F;border-radius:8px;padding:15px;margin-bottom:15px">
-        <h3 style="color:#D32F2F;margin:0 0 10px 0">🛒 ORDER ITEMS</h3>
-        ${Array.isArray(items) ? items.map(i => {
-          const itemName = typeof i === 'object' ? (i.itemName || i.name || JSON.stringify(i)) : i;
-          const qty = typeof i === 'object' ? (i.quantity || 1) : 1;
-          const price = typeof i === 'object' && i.basePriceMoney ? 
-            '$' + (i.basePriceMoney.amount / 100).toFixed(2) : '';
-          return `<div style="padding:8px 0;border-bottom:1px solid #eee">
-            <b>✅ ${qty}x ${itemName}</b> ${price}
-          </div>`;
-        }).join('') : `<div style="padding:8px 0">${itemsList}</div>`}
-      </div>
-
-      ${notes ? `
-      <div style="background:#FFF8E1;border-left:4px solid #FFC107;padding:10px;margin-bottom:15px">
-        <b>📝 Special Notes:</b> ${notes}
-      </div>` : ''}
-
-      <div style="background:#E8F5E9;border-left:4px solid #4CAF50;padding:10px;text-align:center">
-        <b style="color:#2E7D32">✅ Order confirmed and saved to database!</b>
-      </div>
-      
-      <p style="color:#999;font-size:11px;text-align:center;margin-top:15px">
-        ${new Date().toLocaleString('en-US', {timeZone:'America/New_York'})} ET
-      </p>
-    </div>
-  </div>
-`
+        html: `
+          <h2>New Order Received!</h2>
+          <p><strong>Customer:</strong> ${name}</p>
+          <p><strong>Phone:</strong> ${phoneNumber}</p>
+          <p><strong>Items:</strong> ${itemsList}</p>
+          <p><strong>Pickup Time:</strong> ${time}</p>
+          <p><strong>Notes:</strong> ${notes || 'None'}</p>
         `
       })
     });
@@ -262,18 +219,14 @@ app.post('/get-customer', async (req, res) => {
       res.json({
         results: [{
           toolCallId,
-          result: `RETURNING CUSTOMER FOUND! STOP! Do NOT ask for their name! Do NOT say "Can I get your name?". 
-The customer's name is: ${customer.name}
-Their last order was: ${itemsList}
-Their last pickup time was: ${customer.last_pickup_time}
-You MUST immediately say: "Welcome back ${customer.name}! Last time you ordered ${itemsList} for pickup at ${customer.last_pickup_time}. Would you like the same thing again?"`
+          result: `Welcome back ${customer.name}! Last time you ordered ${itemsList} for pickup at ${customer.last_pickup_time}. Would you like the same thing?`
         }]
       });
     } else {
       res.json({
         results: [{
           toolCallId,
-          result: `NEW CUSTOMER - not in database. Ask for their name politely and take their order normally.`
+          result: `new_customer`
         }]
       });
     }
