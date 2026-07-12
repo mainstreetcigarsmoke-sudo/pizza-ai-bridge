@@ -79,14 +79,13 @@ async function saveCustomer(phone, name, items, time) {
 function formatItems(items) {
   if (!Array.isArray(items)) return items;
   const pizzaKeywords = ['pizza', 'calzone', 'medium', 'large', 'xl', 'thin crust', 'gluten free', 'slice'];
-  const toppingKeywords = ['topping', 'extra', 'add'];
   const grouped = [];
   let currentPizza = null;
   items.forEach(item => {
     const raw = typeof item === 'object' ? (item.itemName || JSON.stringify(item)) : item;
     const lower = raw.toLowerCase();
-    const isPizza = pizzaKeywords.some(s => lower.includes(s));
-    const isTopping = toppingKeywords.some(t => lower.includes(t));
+    const isTopping = lower.includes('topping') || lower.includes('(large') || lower.includes('(medium') || lower.includes('(xl') || lower.includes('extra ');
+    const isPizza = !isTopping && pizzaKeywords.some(s => lower.includes(s));
     if (isPizza) {
       currentPizza = { name: raw, toppings: [] };
       grouped.push(currentPizza);
