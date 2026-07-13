@@ -128,34 +128,35 @@ function formatItemsFlat(items) {
 function buildTicketPDF({ name, phoneNumber, items, time, notes }) {
   return new Promise((resolve, reject) => {
     try {
-     const doc = new PDFDocument({ size: 'letter', margin: 50 });
+      const doc = new PDFDocument({ size: 'letter', margin: 50 });
       const chunks = [];
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-      doc.fontSize(16).text("SAL'S PIZZA - NEW ORDER", { align: 'center' });
+
+      doc.fontSize(32).text("SAL'S PIZZA - NEW ORDER", { align: 'center' });
       doc.moveDown(0.5);
-      doc.fontSize(11).text(`Customer: ${name}`);
-      doc.text(`Phone: ${phoneNumber}`);
-      doc.text(`Pickup: ${time}`);
+      doc.fontSize(22).text(`Customer: ${name}`);
+      doc.fontSize(22).text(`Phone: ${phoneNumber}`);
+      doc.fontSize(22).text(`Pickup: ${time}`);
       doc.moveDown(0.5);
-      doc.fontSize(12).text('ORDER ITEMS:', { underline: true });
+      doc.fontSize(24).text('ORDER ITEMS:', { underline: true });
       doc.moveDown(0.3);
       const grouped = formatItems(items);
       if (typeof grouped === 'string') {
-        doc.fontSize(11).text(grouped);
+        doc.fontSize(22).text(grouped);
       } else {
         grouped.forEach(item => {
-          doc.fontSize(11).text(`• ${item.name}`);
+          doc.fontSize(22).text(`• ${item.name}`);
           item.toppings.forEach(t => {
-            doc.fontSize(10).text(`    + ${t}`);
+            doc.fontSize(20).text(`    + ${t}`);
           });
         });
       }
       doc.moveDown(0.5);
-      if (notes) doc.fontSize(10).text(`Notes: ${notes}`);
+      if (notes) doc.fontSize(20).text(`Notes: ${notes}`);
       doc.moveDown(0.5);
-      doc.fontSize(9).text(new Date().toLocaleString(), { align: 'center' });
+      doc.fontSize(16).text(new Date().toLocaleString(), { align: 'center' });
       doc.end();
     } catch (err) {
       reject(err);
