@@ -128,7 +128,7 @@ function formatItemsFlat(items) {
 function buildTicketPDF({ name, phoneNumber, items, time, notes }) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: [288, 600], margin: 10 });
+     const doc = new PDFDocument({ size: 'letter', margin: 50 });
       const chunks = [];
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
