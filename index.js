@@ -260,9 +260,9 @@ app.post('/get-customer', async (req, res) => {
     if (customer) {
       const items = JSON.parse(customer.last_order || '[]');
       const itemsFlat = formatItemsFlat(items);
-      res.json({ results: [{ toolCallId, result: `Welcome back ${customer.name}! Last time you ordered ${itemsFlat} for pickup at ${customer.last_pickup_time}. Would you like the same thing?` }] });
+      res.json({ results: [{ toolCallId, result: `RETURNING CUSTOMER FOUND. Customer name is ${customer.name}. DO NOT ask for their name. Say exactly: "Welcome back ${customer.name}! Last time you ordered ${itemsFlat}. Would you like the same thing or something different today?"` }] });
     } else {
-      res.json({ results: [{ toolCallId, result: `new_customer` }] });
+      res.json({ results: [{ toolCallId, result: `NEW CUSTOMER. Ask for their name and take their order.` }] });
     }
   } catch (err) {
     console.error('get-customer error:', err);
